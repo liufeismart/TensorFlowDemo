@@ -45,6 +45,8 @@ public class CameraActivity extends Activity {
     public static final String ACTION_STOP_SPEAK = "com.humax.intent.ACTION_STOP_SPEAK";
     public static final String ACTION_START_SPEAK = "com.humax.intent.ACTION_START_SPEAK";
 
+
+
     private static final int INPUT_SIZE = 224;
     private static final int IMAGE_MEAN = 117;
     private static final float IMAGE_STD = 1;
