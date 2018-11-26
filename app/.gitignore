@@ -3,5 +3,5 @@ TensorFlowDemo.iml
 .idea/
 local.properties
 build/
-
+.gradle/
 app/app.iml
