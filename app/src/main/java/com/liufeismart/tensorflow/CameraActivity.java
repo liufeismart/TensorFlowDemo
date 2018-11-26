@@ -2,12 +2,16 @@ package com.liufeismart.tensorflow;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.hardware.Camera;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,7 +24,6 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.liufeismart.tensorflow.tensorflow.Classifier;
 import com.liufeismart.tensorflow.tensorflow.TensorFlowImageClassifier;
@@ -35,9 +38,12 @@ import java.util.concurrent.ThreadFactory;
 
 
 public class CameraActivity extends Activity {
+    public  final String EXTRA_SPEAK_CONTENT = "extra_speak_content";
 
     private final String TAG = "CameraActivity";
 
+    public static final String ACTION_STOP_SPEAK = "com.humax.intent.ACTION_STOP_SPEAK";
+    public static final String ACTION_START_SPEAK = "com.humax.intent.ACTION_START_SPEAK";
 
     private static final int INPUT_SIZE = 224;
     private static final int IMAGE_MEAN = 117;
@@ -80,15 +86,30 @@ public class CameraActivity extends Activity {
         // 避免耗时任务占用 CPU 时间片造成UI绘制卡顿，提升启动页面加载速度
         Log.v(TAG, "onCreate1");
         Looper.myQueue().addIdleHandler(idleHandler);
+        //
+        AudioManager audioManager = (AudioManager)getSystemService(Context.AUDIO_SERVICE);                   audioManager.setStreamMute(AudioManager.STREAM_SYSTEM, false);
+        audioManager.setStreamMute(AudioManager.STREAM_SYSTEM, false);
     }
 
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        Intent intent = new Intent();
+        intent.setAction(ACTION_STOP_SPEAK);
+        sendBroadcast(intent);
+    }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         if(camera !=null) {
             camera.release();
+            camera = null;
         }
+
+        AudioManager audioManager = (AudioManager)getSystemService(Context.AUDIO_SERVICE);                   audioManager.setStreamMute(AudioManager.STREAM_SYSTEM, false);
+        audioManager.setStreamMute(AudioManager.STREAM_SYSTEM, true);
     }
 
     /**
@@ -158,6 +179,18 @@ public class CameraActivity extends Activity {
             meteringAreas.add(new Camera.Area(new Rect(800, -1000, 1000, -800), 400));
             parameters.setMeteringAreas(meteringAreas);
         }
+
+        Camera.Size fitPreviewSize = null;
+        CameraSizeAccessor sizeAccessor = getCameraSizeAccessor();
+        int minDiff = Integer.MAX_VALUE;
+        for (Camera.Size size : camera.getParameters().getSupportedPreviewSizes()) {
+            int diff = (int) Math.sqrt(Math.pow(sizeAccessor.getWidth(size) - 1280, 2) + Math.pow(sizeAccessor.getHeight(size) - 720, 2));
+            if (diff < minDiff) {
+                minDiff = diff;
+                fitPreviewSize = size;
+            }
+        }
+        parameters.setPreviewSize(fitPreviewSize.width, fitPreviewSize.height);
         camera.setParameters(parameters);
         //3.打开预览
         SurfaceHolder holder = sfv.getHolder();
@@ -189,23 +222,13 @@ public class CameraActivity extends Activity {
         }
     }
 
-
+    private CameraSizeAccessor getCameraSizeAccessor() {
+        return new CameraSizeAccessor(this.getResources().getConfiguration().orientation);
+    }
 
     private void takePicture() {
         Log.v(TAG, "takePicture");
-        camera.takePicture(new Camera.ShutterCallback() {
-
-            @Override
-            public void onShutter() {
-                Log.v(TAG, "onShutter");
-            }
-        }, new Camera.PictureCallback() {
-
-            @Override
-            public void onPictureTaken(byte[] data, Camera camera) {
-                Log.v(TAG, "onPictureTaken1");
-            }
-        }, new Camera.PictureCallback() {
+        camera.takePicture(null, null, new Camera.PictureCallback() {
             public void onPictureTaken(byte[] _data, Camera _camera) {
                 Log.v(TAG, "onPictureTaken2");
                 /*
@@ -227,8 +250,10 @@ public class CameraActivity extends Activity {
                     new Handler().postDelayed(new Runnable() {
                         @Override
                         public void run() {
-                            camera.startPreview();
-                            takePicture();
+                            if(camera!=null) {
+                                camera.startPreview();
+                                takePicture();
+                            }
                         }
                     }, 2000);
 //                        /* 创建文件 */
@@ -302,6 +327,10 @@ public class CameraActivity extends Activity {
                         @Override
                         public void run() {
                             tv_result.setText("result = "+map.get(results.get(0).toString()));
+                            Intent intent = new Intent();
+                            intent.putExtra(EXTRA_SPEAK_CONTENT, map.get(results.get(0).toString()));
+                            intent.setAction(ACTION_START_SPEAK);
+                            sendBroadcast(intent);
                         }
                     });
                 } catch (IOException e) {
@@ -328,6 +357,23 @@ public class CameraActivity extends Activity {
         Matrix matrix = new Matrix();
         matrix.postScale(scaleWidth, scaleHeight);
         return Bitmap.createBitmap(bitmap, 0, 0, width, height, matrix, true);
+    }
+
+
+    private static class CameraSizeAccessor {
+        private int orientation;
+
+        CameraSizeAccessor(int orientation) {
+            this.orientation = orientation;
+        }
+
+        int getWidth(Camera.Size size) {
+            return orientation == Configuration.ORIENTATION_LANDSCAPE ? Math.max(size.width, size.height) : Math.min(size.width, size.height);
+        }
+
+        int getHeight(Camera.Size size) {
+            return orientation == Configuration.ORIENTATION_LANDSCAPE ? Math.min(size.width, size.height) : Math.max(size.width, size.height);
+        }
     }
 
 
